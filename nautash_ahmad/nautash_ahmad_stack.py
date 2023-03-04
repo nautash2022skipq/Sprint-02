@@ -8,6 +8,7 @@ from aws_cdk import (
     aws_sns as sns_,
     aws_sns_subscriptions as subscriptions_,
     aws_cloudwatch_actions as cw_actions_,
+    aws_dynamodb as dynamo_,
     Stack,
     RemovalPolicy,
 )
@@ -29,6 +30,11 @@ class NautashAhmadStack(Stack):
         # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk/RemovalPolicy.html#aws_cdk.RemovalPolicy
         fn.apply_removal_policy(RemovalPolicy.DESTROY)
         
+        # Creating lambda for dynamo handler
+        dynamo_lambda = self.create_lambda("WebHealthDynamoLambda", "./resources", "WebHealthDynamoLambda.lambda_handler", 
+            role, 2
+        )
+        
         # Creating a rule to make our Lambda a cronjob and giving it a target
         # Schedule rule: https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_events/Schedule.html
         rule = events_.Rule(self, "WebHealthLambdaRule",
@@ -49,7 +55,15 @@ class NautashAhmadStack(Stack):
         availability_alarm = self.create_cw_alarm('availability_errors', 1, cw_.ComparisonOperator.LESS_THAN_THRESHOLD, constants.MINS, availability_metric)
         
         latency_metric = self.create_cw_metric(constants.NAMESPACE, constants.LATENCY_METRIC, dimensions)
-        latency_alarm = self.create_cw_alarm('latency_errors', 0.5, cw_.ComparisonOperator.GREATER_THAN_THRESHOLD, constants.MINS, latency_metric)
+        latency_alarm = self.create_cw_alarm('latency_errors', 0.1, cw_.ComparisonOperator.GREATER_THAN_THRESHOLD, constants.MINS, latency_metric)
+        
+        # Creating DynamoDB table
+        dynamo_table = self.create_dynamodb_table('WebHealthDynamoTable', 'id', 'timestamp')
+        dynamo_table.grant_full_access(dynamo_lambda)
+        
+        # Adding environment variable to Lambda
+        # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_lambda/Function.html#aws_cdk.aws_lambda.Function.add_environment
+        dynamo_lambda.add_environment('tableName' ,dynamo_table.table_name)
         
         # Creating SNS topic and subscription
         # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_sns/Topic.html
@@ -57,6 +71,9 @@ class NautashAhmadStack(Stack):
         
         # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_sns_subscriptions/EmailSubscription.html
         topic.add_subscription(subscriptions_.EmailSubscription('nautash.ahmad.skipq@gmail.com'))
+        
+        # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_sns_subscriptions/LambdaSubscription.html
+        topic.add_subscription(subscriptions_.LambdaSubscription(dynamo_lambda))
         
         # Connecting CloudWatch alarms with SNS topic to send notifications when alaram is triggered
         # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_cloudwatch_actions/SnsAction.html
@@ -86,7 +103,8 @@ class NautashAhmadStack(Stack):
             # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_iam/ManagedPolicy.html#aws_cdk.aws_iam.ManagedPolicy.from_aws_managed_policy_name
             managed_policies=[
                 iam_.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaBasicExecutionRole"),
-                iam_.ManagedPolicy.from_aws_managed_policy_name("CloudWatchFullAccess")
+                iam_.ManagedPolicy.from_aws_managed_policy_name("CloudWatchFullAccess"),
+                iam_.ManagedPolicy.from_aws_managed_policy_name("AmazonDynamoDBFullAccess")
             ]
         )
         
@@ -110,4 +128,16 @@ class NautashAhmadStack(Stack):
             metric_name=metric_name,
             namespace=namespace,
             dimensions_map=dimensions
+        )
+        
+        
+    # Create AWS DynamoDB table
+    # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_dynamodb/Table.html
+    def create_dynamodb_table(self, id, partition_key, sort_key):
+        return dynamo_.Table(self, 
+            id=id,
+            partition_key=dynamo_.Attribute(name=partition_key, type=dynamo_.AttributeType.STRING),
+            sort_key=dynamo_.Attribute(name=sort_key, type=dynamo_.AttributeType.STRING),
+            billing_mode=dynamo_.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.DESTROY,
         )
