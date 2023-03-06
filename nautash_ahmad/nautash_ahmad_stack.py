@@ -46,17 +46,6 @@ class NautashAhmadStack(Stack):
         
         rule.apply_removal_policy(RemovalPolicy.DESTROY)
         
-        '''
-            Creating two metrics for a website which are availability and latency
-            Alarms will be created for each of these metrics
-        '''
-        dimensions = {'URL': constants.URLS[-1]}
-        availability_metric = self.create_cw_metric(constants.NAMESPACE, constants.AVAILABILITY_METRIC, dimensions)
-        availability_alarm = self.create_cw_alarm('availability_errors', 1, cw_.ComparisonOperator.LESS_THAN_THRESHOLD, constants.MINS, availability_metric)
-        
-        latency_metric = self.create_cw_metric(constants.NAMESPACE, constants.LATENCY_METRIC, dimensions)
-        latency_alarm = self.create_cw_alarm('latency_errors', 0.1, cw_.ComparisonOperator.GREATER_THAN_THRESHOLD, constants.MINS, latency_metric)
-        
         # Creating DynamoDB table
         dynamo_table = self.create_dynamodb_table('WebHealthDynamoTable', 'id', 'timestamp')
         dynamo_table.grant_full_access(dynamo_lambda)
@@ -75,10 +64,22 @@ class NautashAhmadStack(Stack):
         # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_sns_subscriptions/LambdaSubscription.html
         topic.add_subscription(subscriptions_.LambdaSubscription(dynamo_lambda))
         
-        # Connecting CloudWatch alarms with SNS topic to send notifications when alaram is triggered
-        # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_cloudwatch_actions/SnsAction.html
-        availability_alarm.add_alarm_action(cw_actions_.SnsAction(topic))
-        latency_alarm.add_alarm_action(cw_actions_.SnsAction(topic))
+        '''
+            Creating two metrics for a website which are availability and latency
+            Alarms will be created for each of these metrics
+        '''
+        for url in constants.URLS:
+            dimensions = {'URL': url}
+            availability_metric = self.create_cw_metric(constants.NAMESPACE, constants.AVAILABILITY_METRIC, dimensions)
+            availability_alarm = self.create_cw_alarm(f'{url}_availability_errors', 1, cw_.ComparisonOperator.LESS_THAN_THRESHOLD, constants.MINS, availability_metric)
+            
+            latency_metric = self.create_cw_metric(constants.NAMESPACE, constants.LATENCY_METRIC, dimensions)
+            latency_alarm = self.create_cw_alarm(f'{url}_latency_errors', 0.1, cw_.ComparisonOperator.GREATER_THAN_THRESHOLD, constants.MINS, latency_metric)
+        
+            # Connecting CloudWatch alarms with SNS topic to send notifications when alaram is triggered
+            # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_cloudwatch_actions/SnsAction.html
+            availability_alarm.add_alarm_action(cw_actions_.SnsAction(topic))
+            latency_alarm.add_alarm_action(cw_actions_.SnsAction(topic))
         
         
     # Create Lambda construct

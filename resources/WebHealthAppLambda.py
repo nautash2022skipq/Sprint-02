@@ -9,7 +9,6 @@ from constants import (
 
 def lambda_handler(event, context):
     metrics = dict()
-    # url = 'www.webstresser.org'
     
     # Creating AWS CloudWatch object
     cw_obj = AWSCloudWatch()
@@ -18,16 +17,14 @@ def lambda_handler(event, context):
         availability = getAvailability(url)
         latency = getLactency(url)
                 
-        metrics.update({"url": url, "availability": availability, "latency": latency})
+        metrics.update({
+            url: f'availability: {availability} ---- latency: {latency}'
+        })
         
         # Sending metric data to CloudWatch
         dimensions = [{'Name': 'URL', 'Value': url}]
         cw_obj.cw_put_metric_data(NAMESPACE, AVAILABILITY_METRIC, dimensions, availability)
         cw_obj.cw_put_metric_data(NAMESPACE, LATENCY_METRIC, dimensions, latency)
-    
-    # availability = getAvailability(url)
-    # latency = getLactency(url)
-    # metrics.update(({"url": url, "availability": availability, "latency": latency}))
     
     return metrics
 

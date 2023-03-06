@@ -4,8 +4,6 @@ import boto3
 def lambda_handler(event, context):
     dynamo = boto3.resource('dynamodb', 'us-east-2')
     
-    print(event)
-    
     # https://docs.aws.amazon.com/lambda/latest/dg/with-sns.html
     event_data = event['Records'][0]['Sns']
     message_id = event_data['MessageId']
